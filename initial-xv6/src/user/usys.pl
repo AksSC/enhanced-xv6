@@ -40,4 +40,5 @@ entry("waitx");
 entry("getSysCount");
 entry("sigalarm");
 entry("sigreturn");
-entry("settickets") # ?
+entry("settickets"); # ?
+entry("get_page_faults")

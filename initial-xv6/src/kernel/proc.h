@@ -1,3 +1,5 @@
+#include "spinlock.h"
+
 // Saved registers for kernel context switches.
 struct context
 {
@@ -121,6 +123,7 @@ struct proc
   uint etime;                  // When did the process exited
   uint syscall_count[32];          // Number of system calls made by the process, max 32 syscalls
   uint child_syscall_count[32];    // Same for children
+  int page_faults;            // Number of page faults (for COW fork)
 
   int alarm;                  // If alarm is set
   uint64 alarm_handler;       // The handler function

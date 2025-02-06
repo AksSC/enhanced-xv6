@@ -5,6 +5,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -167,11 +168,12 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
-void
+void // COW FORK
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
   pte_t *pte;
+  uint64 pa;
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
@@ -181,10 +183,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
     if(do_free){
-      uint64 pa = PTE2PA(*pte);
+      pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
     *pte = 0;
@@ -222,7 +222,7 @@ uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
 
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
-uint64
+uint64 // COW FORK
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 {
   char *mem;
@@ -308,7 +308,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -317,13 +317,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    *pte &= ~PTE_W;
+    *pte |= PTE_COW;
+    if(mappages(new, i, PGSIZE, pa, ((flags & ~PTE_W)|PTE_COW)) != 0){
+      // kfree(mem);
       goto err;
     }
+    inc_ref((void *)pa);
   }
   return 0;
 
@@ -345,6 +345,35 @@ uvmclear(pagetable_t pagetable, uint64 va)
   *pte &= ~PTE_U;
 }
 
+extern uint64 page_faults;
+// to actually handle the (COW) page faults!
+int
+page_fault_handler(uint64 va)
+{
+  struct proc *p = myproc();
+  p->page_faults++;
+  if(va >= MAXVA)
+    return -1;
+  pte_t *pte = walk(p->pagetable, va, 0);
+  if(pte == 0)
+    return -1;
+  if((*pte & PTE_V) == 0) // Not a valid page; cannot proceed
+    return -1;
+  if((*pte & PTE_COW) == 0) // Not a COW page; cannot proceed
+    return -1;
+  uint64 pa = PTE2PA(*pte);
+  uint flags = PTE_FLAGS(*pte);
+  char *mem = kalloc();
+  if(mem == 0)
+    return -1;
+  memmove(mem, (char*)pa, PGSIZE);
+  kfree((void*)pa);
+  // Update PTE
+  *pte = PA2PTE((uint64)mem) | ((flags | PTE_W) & ~PTE_COW);
+  sfence_vma();
+  return 0;
+}
+
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
@@ -352,12 +381,31 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
+  pte_t *pte;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+    pte = walk(pagetable, va0, 0);
+    if((*pte & PTE_W) == 0){ // page is not writable
+      // handle COW if needed
+      if((*pte & PTE_COW) != 0){
+        if(page_fault_handler(dstva) != 0){
+          return -1;
+        }
+        // get PTE and physical address again
+        pte = walk(pagetable, va0, 0);
+        if(pte == 0)
+          return -1;
+        pa0 = PTE2PA(*pte);
+        if(pa0 == 0)
+          return -1;
+      } else {
+        return -1;
+      }
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;

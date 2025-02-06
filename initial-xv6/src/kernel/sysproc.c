@@ -151,3 +151,9 @@ sys_settickets(void){
   myproc()->tickets = num;
   return num;
 }
+
+extern uint page_faults;
+int sys_get_page_faults(void) {
+    int ret = myproc()->page_faults;
+    return ret;
+}

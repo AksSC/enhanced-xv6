@@ -1,3 +1,6 @@
+#ifndef __DEFS_H__
+#define __DEFS_H__
+
 struct buf;
 struct context;
 struct file;
@@ -63,6 +66,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void            inc_ref(void *);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -173,6 +177,7 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             page_fault_handler(uint64);
 
 // plic.c
 void            plicinit(void);
@@ -191,3 +196,5 @@ void            update_time(void);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+#endif // __DEFS_H__

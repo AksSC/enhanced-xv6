@@ -31,7 +31,7 @@ void trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
-void usertrap(void)
+void usertrap(void) // COW FORK
 {
   int which_dev = 0;
 
@@ -67,6 +67,14 @@ void usertrap(void)
   else if ((which_dev = devintr()) != 0)
   {
     // ok
+  }
+  else if(r_scause() == 15 || r_scause() == 13){
+    // page fault, handle
+    uint64 va = r_stval();
+    if(page_fault_handler(va)<0){
+      // printf("Page fault at %p\n", va);
+      setkilled(p);
+    }
   }
   else
   {

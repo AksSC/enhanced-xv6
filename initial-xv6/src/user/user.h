@@ -27,6 +27,7 @@ int getSysCount(int);
 int sigalarm(int, void (*)(void));
 int sigreturn(void);
 int settickets(int);
+int get_page_faults(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

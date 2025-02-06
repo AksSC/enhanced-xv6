@@ -337,6 +337,7 @@ int fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
+  np->page_faults = 0;
 
   release(&np->lock);
 
