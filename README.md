@@ -101,6 +101,7 @@ The default **Round Robin (RR)** scheduler in xv6 has been extended to support:
 
 2. **Compile with different schedulers**:
    ```sh
+   cd initial-xv6/src
    make clean; make qemu SCHEDULER=RR    # Default Round Robin
    make clean; make qemu SCHEDULER=LBS   # Lottery-Based Scheduling
    make clean; make qemu SCHEDULER=MLFQ CPUS=1  # Multi-Level Feedback Queue
